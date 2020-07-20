@@ -1,7 +1,7 @@
 Package: JichiPoly
 Title: Convert a CSV file with Japanese Local Government Code to a Geojson File with Administrative Boundary Polygon Geometry
 Version: 0.0.1
-Authors@R: person("Masaki", "Ikeda", c("aut", "cre"), email="m-ikeda@bosai.go.jp", comment = c(ORCID = "0000-0003-3877-9809"))
+Authors@R: person(given="Masaki", family="Ikeda", role=c("aut", "cre"), email="m-ikeda@bosai.go.jp", comment=c(ORCID="0000-0003-3877-9809"))
 Description: What the package does (one paragraph).
 License: GPL-3
 Encoding: UTF-8

@@ -1,7 +1,8 @@
-library(dplyr)
-library(RCurl)
-library(jsonlite)
-library(sf)
+targetPackages <- c('dplyr', 'RCurl', 'DT', 'sf', 'leaflet', 'devtools') 
+newPackages <- targetPackages[!(targetPackages %in% installed.packages()[,"Package"])]
+if(length(newPackages)) install.packages(newPackages, repos = "http://cran.us.r-project.org")
+for(package in targetPackages) library(package, character.only = T)
+if(!"jpndistrict" %in% installed.packages()[,"Package"]) devtools::install_github("uribo/jpndistrict")
 library(jpndistrict)
 
 city_union<-function(x) {
