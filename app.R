@@ -1,13 +1,16 @@
 targetPackages <- c('shiny', 'shinyjs', 'shinyWidgets', 'shinydashboard',
                     'dplyr', 'readr', 'DT', 'sf', 'leaflet', 'geojsonsf') 
 newPackages <- targetPackages[!(targetPackages %in% installed.packages()[,"Package"])]
-if(length(newPackages)) install.packages(newPackages, repos = "http://cran.us.r-project.org")
+if(length(newPackages)) install.packages(newPackages, repos = "https://cran.ism.ac.jp/")
 for(package in targetPackages) library(package, character.only = T)
+source('./jpndistrict2.R')
+
 
 # configuration
 site_name <- "Jichi Poly"
 skin_type <- "purple"
-
+options(spinner.color="#605CA8", spinner.color.background="#ffffff", spinner.size=2)
+spins <- c('circle','bounce','folding-cube','rotating-plane','cube-grid','fading-circle','double-bounce','dots','cube')
 
 # HTML header
 htmlHeader <- tags$head(
@@ -73,7 +76,7 @@ body <- dashboardBody(
       "map",
       bootstrapPage(
         tags$style(type="text/css", "#mapPlot {height: calc(100vh - 80px) !important;}"),
-        leafletOutput("mapPlot")
+        addSpinner(leafletOutput('mapPlot'), spin=spins[as.integer(runif(1,min=1,max=9))], color="#555299")
       )
     )
   )
@@ -117,17 +120,35 @@ server <- function(input, output, session) {
   
   # Code Column Select Event
   observeEvent(input$submit, {
-    
-    # Cast the column of code to character type
+    flg <- T
     data <- read.csv(input$file$datapath)
-    jichi_code <- sprintf("%05d", data[,input$jichicode])
-    data[,input$jichicode] <- jichi_code
-    
-    if (grep("^([0-3][0-9]|4[0-7])[0-9]{3}$", jichi_code) %>% length() == length(jichi_code)) {
+    jichi_code <- data[,input$jichicode]
+
+    # LG Code Validation
+    if (grep("^([0-3]?[0-9]|4[0-7])[0-9]{3}$", jichi_code) %>% length() == length(jichi_code)) {
+      jichi_code <- sprintf("%05d", jichi_code)
+    } else if (grep("^[0-3]?[0-9]|4[0-7]$", jichi_code) %>% length() == length(jichi_code)) {
+      jichi_code <- sprintf("%02d", jichi_code)
+    } else {
+      # Warn if values in the selected column is not a digit of LG code
+      show_alert(
+        title = "Error !!",
+        text = "The selected code is invalid.",
+        type = "error"
+      )
+      flg <- F
+    }
+
+    if (flg) {
+      # Read dataset and cast the column of code to character type
+
+      data[,input$jichicode] <- jichi_code
+      print(jichi_code)
+
       # Add geometry
       stData <<- jpn_cities2(data[,input$jichicode]) %>%
         dplyr::left_join(., data, by=c("city_code"=input$jichicode))
-      
+
       # Plot dataset on map
       output$mapPlot <- renderLeaflet({
         leaflet() %>%
@@ -138,17 +159,9 @@ server <- function(input, output, session) {
                       fillOpacity=0.2, popup=leafpop::popupTable(st_drop_geometry(stData))) %>%
           addScaleBar(position="bottomleft")
       })
-      
+
       # Go to next tab
       updateTabItems(session, "menu", "map")
-      
-    } else {
-      # Warn if values in the selected column is not a digit of LG code
-      show_alert(
-        title = "Error !!",
-        text = "The selected code is invalid.",
-        type = "error"
-      )
     }
   })
   
