@@ -123,7 +123,7 @@ server <- function(input, output, session) {
     jichi_code <- sprintf("%05d", data[,input$jichicode])
     data[,input$jichicode] <- jichi_code
     
-    if (grep("^([0-3][1-9]|4[1-7])[0-9]{3}$", jichi_code) %>% length() == length(jichi_code)) {
+    if (grep("^([0-3][0-9]|4[0-7])[0-9]{3}$", jichi_code) %>% length() == length(jichi_code)) {
       # Add geometry
       stData <<- jpn_cities2(data[,input$jichicode]) %>%
         dplyr::left_join(., data, by=c("city_code"=input$jichicode))
