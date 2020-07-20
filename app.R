@@ -1,43 +1,30 @@
-library(shiny)
-library(shinyjs)
-library(shinydashboard)
-library(shinyWidgets)
-library(dplyr)
-library(readr)
-library(DT)
-library(sf)
-library(geojsonsf)
-library(leaflet)
-library(mapview)
-source("jpndistrict2.R")
+targetPackages <- c('shiny', 'shinyjs', 'shinyWidgets', 'shinydashboard',
+                    'dplyr', 'readr', 'DT', 'sf', 'leaflet', 'geojsonsf') 
+newPackages <- targetPackages[!(targetPackages %in% installed.packages()[,"Package"])]
+if(length(newPackages)) install.packages(newPackages, repos = "http://cran.us.r-project.org")
+for(package in targetPackages) library(package, character.only = T)
 
-# サイト設定
+# configuration
 site_name <- "Jichi Poly"
 skin_type <- "purple"
 
-# スタイル設定
-options(spinner.color="#605CA8", spinner.color.background="#ffffff", spinner.size=2)
-spins <- c("circle","bounce","folding-cube","rotating-plane","cube-grid","fading-circle","double-bounce","dots","cube")
 
-# 地図の設定
-
-
-# HTMLヘッダ
+# HTML header
 htmlHeader <- tags$head(
   tags$link(rel="stylesheet", type="text/css", href="style.css"),
   tags$script(src="drag.js")
 )
 
-# UIヘッダ
+# UI header
 header <- dashboardHeader(title=HTML(site_name), disable=FALSE, titleWidth=250)
 
-# UIサイドバー
+# UI sidebar
 sidebar <- dashboardSidebar(
   width=250,
   sidebarMenu(
     id="menu",
     menuItem(
-      "１．ファイルをアップロード",
+      "1. Upload CSV File",
       tabName="dataTable",
       startExpanded=T
     ),
@@ -50,7 +37,7 @@ sidebar <- dashboardSidebar(
       ),
     ),
     menuItem(
-      "２．JISCODE列を選択",
+      "2. Select Column of LG Code",
       tabName="code"
     ),
     conditionalPanel(
@@ -60,18 +47,18 @@ sidebar <- dashboardSidebar(
       htmlOutput("submit")
     ),
     menuItem(
-      "３．地図で確認",
+      "3. Confirm Result on Map",
       tabName="map"
     ),
     conditionalPanel(
       class="subMenus",
       condition="input.menu == 'map'",
-      downloadButton("downloadJSON", "GeoJSONをDownload")
+      downloadButton("downloadJSON", "Download GeoJSON")
     )
   )
 )
 
-# UIボディ
+# UI body
 body <- dashboardBody(
   useShinyjs(),
   tabItems(
@@ -99,40 +86,52 @@ ui <- dashboardPage(header, sidebar, body, skin=skin_type, htmlHeader)
 # Server
 server <- function(input, output, session) {
   
-  # 初期化
+  # Initialize
   shinyjs::disable("downloadJSON")
   stData <- NULL
   
-  # ファイルをアップロードしたら
+  # File Upload Event
   observeEvent(input$file, {
     
-    # データ読込
-    data <- reactive(read.csv(input$file$datapath))
-    output$table <- renderDataTable(data())
-    output$colname <- renderUI(selectInput("jiscode", "JISCODE", colnames(data())))
-    output$submit <- renderUI(actionButton("submit", "プロット"))
-    
-    # タブを切り替え
-    updateTabItems(session, "menu", "code")
+    # File type validation
+    if (input$file$name %>% gsub("^.+\\.", "", .) != "csv") {
+      
+      # Warn if the file type is not match
+      show_alert(
+        title = "Error !!",
+        text = "The selected file is invalid.",
+        type = "error"
+      )
+    } else {
+      
+      # Read dataset
+      data <- reactive(read.csv(input$file$datapath))
+      output$table <- renderDataTable(data())
+      output$colname <- renderUI(selectInput("jichicode", "JICHICODE", colnames(data())))
+      output$submit <- renderUI(actionButton("submit", "View on map"))
+      
+      # Go to next tab
+      updateTabItems(session, "menu", "code")
+    }
   })
   
-  # JISCODE列を選択したら
+  # Code Column Select Event
   observeEvent(input$submit, {
     
-    # JISCODE列をcharacter型にcast
+    # Cast the column of code to character type
     data <- read.csv(input$file$datapath)
-    data[,input$jiscode] <- data[,input$jiscode] %>% as.character()
-    jis_code <- data[,input$jiscode]
+    jichi_code <- sprintf("%05d", data[,input$jichicode])
+    data[,input$jichicode] <- jichi_code
     
-    if (grep("^([0-3][1-9]|4[1-7])[0-9]{3}$", jis_code) %>% length() == length(jis_code)) {
-      # geometry付与
-      stData <<- jpn_cities2(data[,input$jiscode]) %>%
-        dplyr::left_join(., data, by=c("city_code"=input$jiscode))
+    if (grep("^([0-3][1-9]|4[1-7])[0-9]{3}$", jichi_code) %>% length() == length(jichi_code)) {
+      # Add geometry
+      stData <<- jpn_cities2(data[,input$jichicode]) %>%
+        dplyr::left_join(., data, by=c("city_code"=input$jichicode))
       
-      # 地図にプロット
+      # Plot dataset on map
       output$mapPlot <- renderLeaflet({
         leaflet() %>%
-          addTiles("https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png", group="背景地図",
+          addTiles("https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png", group="basemap",
                    attribution='<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank">地理院タイル</a>') %>%
           addMapPane("overlay", zIndex=600) %>%
           addPolygons(data=stData, option=pathOptions(pane="overlay"), stroke=T, color="#6666FF", weight=5,
@@ -140,33 +139,33 @@ server <- function(input, output, session) {
           addScaleBar(position="bottomleft")
       })
       
-      # タブを切り替え
+      # Go to next tab
       updateTabItems(session, "menu", "map")
       
     } else {
-      # 選択列がJISCODE（※01～47＋3桁）でなければアラート
+      # Warn if values in the selected column is not a digit of LG code
       show_alert(
         title = "Error !!",
-        text = "選択したコードが正しくありません。",
+        text = "The selected code is invalid.",
         type = "error"
       )
     }
   })
   
-  # mapタブに切り替わったら
+  # Open Map Event
   observeEvent(input$menu, {
     
     req(stData)
     if (!is.null(stData)) {
       
-      # GeoJSONを作成
+      # Make GeoJSON File
       json <- sf_geojson(stData)
       output$downloadJSON = downloadHandler(
         filename = function() {sprintf("%s.geojson", input$file$name %>% gsub("\\..+$", "", .))},
         content = function(f) {write(json, f)}
       )
       
-      # ダウンロードボタンを有効化
+      # Enable the download button
       shinyjs::enable("downloadJSON")
     }
   })
